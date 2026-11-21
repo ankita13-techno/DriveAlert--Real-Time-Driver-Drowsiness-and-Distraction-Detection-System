@@ -1,0 +1,2 @@
+# DriveAlert--Real-Time-Driver-Drowsiness-and-Distraction-Detection-System
+Built DriveAlert, a lightweight, offline edge computer vision system for real-time driver fatigue and distraction monitoring. Leveraging OpenCV and MediaPipe, the pipeline tracks 468 3D facial landmarks to compute Eye Aspect Ratio for micro-sleep, Mouth Aspect Ratio for yawning, and Perspective-n-Point  head pose angles for visual distraction. 
