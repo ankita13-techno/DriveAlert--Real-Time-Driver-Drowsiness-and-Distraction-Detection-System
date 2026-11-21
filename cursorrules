@@ -1,0 +1,77 @@
+# DriveAlert — AI Coding Assistant Ruleset (.cursorrules)
+
+You are generating code for **DriveAlert**, a real-time driver drowsiness/distraction detection system.
+Read `instructions.md` in this workspace first — it is the source of truth for formulas, thresholds, and
+user flow. These rules govern *how* you write code against that blueprint. If any instruction below and
+`instructions.md` ever appear to conflict, treat `instructions.md`'s math/thresholds as authoritative and
+flag the conflict instead of silently picking one.
+
+## 1. Fixed Tech Stack — do not substitute or add to it
+
+- **Language:** Python 3.9+ only. Do not use syntax requiring a newer minimum version without flagging it.
+- **Computer vision / capture:** OpenCV **4.8** (`cv2`) — camera I/O, frame preprocessing, drawing overlays.
+- **Landmark extraction:** Google **MediaPipe Face Mesh** (468 3D landmarks) — the only permitted facial
+  landmark source.
+- **Alerts:** **Pygame**, using its mixer module on a background thread, for non-blocking acoustic alarms.
+- Do NOT introduce dlib, face_recognition, MTCNN, YOLO-based face/eye detectors, or any other landmark
+  or detection library as a substitute or "improvement" unless the user explicitly asks for it.
+- Do NOT add new third-party dependencies (numpy is fine as a MediaPipe/OpenCV dependency; anything beyond
+  the stack above requires explicit user approval first).
+
+## 2. Hard Bans — these break the project's core thesis
+
+- **No cloud dependency of any kind.** No REST calls, no cloud APIs, no telemetry upload, no "send frame to
+  server for inference," no internet-dependent model downloads at runtime. Any model/weights must be
+  loadable fully offline once installed.
+- **No heavy deep-learning frameworks.** No PyTorch, TensorFlow/Keras, ONNX CNN inference, or any trained
+  neural classifier standing in for the geometric-ratio math. MediaPipe's own internal model is the one
+  exception already baked into the approved stack — do not add a *second*, project-authored deep model
+  on top of it.
+- **No raw pixel-tensor processing for the drowsiness/distraction logic.** The entire point of this
+  architecture is dimensionless geometric ratios (EAR, MAR, head-pose angles) computed from landmark
+  coordinates, not pixel-level classification. If you find yourself writing image-classification code for
+  drowsiness/yawn/distraction detection, stop — that's the wrong architecture for this project.
+- **No GPU-only code paths.** Never assume CUDA, `.cuda()`, or GPU-accelerated inference is available.
+  Target hardware is a CPU-only edge device (Raspberry Pi 4 / Intel i3-class) and, for now, a local laptop
+  CPU.
+- **No hallucinated hardware/sensors.** Do not invent or silently assume EEG headbands, IR sensors,
+  steering-wheel sensors, CAN-bus access, or dashboard integration in the current build — those are
+  explicitly **future scope only** (see `instructions.md` §9). The current build is: laptop, built-in
+  webcam, speakers.
+
+## 3. Formulas & Thresholds — implement exactly, do not "improve" silently
+
+- EAR formula and the **EAR < 0.22 for 45 consecutive frames** micro-sleep rule must be implemented exactly
+  as specified in `instructions.md` §4.1. Use a rolling counter of consecutive below-threshold frames, not
+  a single-frame trigger.
+- MAR formula and the **MAR > 0.60 sustained** yawn rule must match `instructions.md` §4.2.
+- Head pose via `cv2.solvePnP` and the **>2.5 second** away-from-road distraction rule must match
+  `instructions.md` §4.3.
+- If you believe a threshold should change (e.g., after real-world laptop testing shows false positives),
+  **surface this explicitly to the user as a suggestion** — never change a documented threshold silently
+  in generated code.
+- Prefer named constants for every threshold (`EAR_THRESHOLD = 0.22`, `EAR_CONSEC_FRAMES = 45`,
+  `MAR_THRESHOLD = 0.60`, `DISTRACTION_SECONDS = 2.5`) defined once at the top of the relevant module —
+  never hardcode magic numbers inline.
+
+## 4. Code Quality & Structure Rules
+
+- Every OpenCV capture loop must release the camera and destroy windows on exit (including on exception) —
+  never leave a dangling `VideoCapture` handle.
+- Audio alerts must play on a separate thread (or via Pygame's non-blocking mixer channel API) — never call
+  a blocking `time.sleep`-based audio play inside the main capture/inference loop.
+- Handle the "no face detected" case explicitly in every frame-processing function; never assume landmarks
+  exist before computing EAR/MAR/head pose on them.
+- Keep the ratio-computation functions (EAR, MAR, head pose) pure and independently testable — they should
+  take landmark coordinates in, return a float/tuple out, with no camera or Pygame dependency, so they can
+  be unit-tested without a webcam.
+- Default camera source is always local device index `0` (built-in laptop webcam) unless the user specifies
+  otherwise.
+
+## 5. When Unsure
+
+- If a request would require violating §1 or §2 (new heavy dependency, cloud call, GPU assumption,
+  hallucinated hardware), do not comply silently — say so, explain the conflict with the project's
+  edge-only / lightweight design goals, and ask how the user wants to proceed.
+- If the user asks for something `instructions.md` doesn't cover (e.g., a new alert type, a logging
+  system), it's fine to design it — just keep it consistent with the fixed stack and hard bans above.
